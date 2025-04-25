@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meine Abfahrtszeiten</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: white;
+            color: black;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        h2 {
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .update-time {
+            font-size: 12px;
+            text-align: center;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .no-data {
+            text-align: center;
+            padding: 10px;
+            font-style: italic;
+        }
+        .refresh-button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #333;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+        .line {
+            display: inline-block;
+            width: 30px;
+            text-align: center;
+            border-radius: 3px;
+            font-weight: bold;
+            color: white;
+        }
+        .line-4 {
+            background-color: #7D64B2; /* Lila für Straßenbahn 4 */
+        }
+        .line-70 {
+            background-color: #005E6E; /* Blaugrün für Bus 70 */
+        }
+        .line-S1 {
+            background-color: #10A638; /* Grün für S-Bahn S1 */
+        }
+    </style>
+</head>
+<body>
+    <h1>Meine Abfahrtszeiten</h1>
+    <div class="update-time" id="update-time">Stand: Wird geladen...</div>
+    
+    <!-- Peschelstraße - Linie 4 -->
+    <h2>Peschelstraße</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Linie</th>
+                <th>Richtung</th>
+                <th>Abfahrt</th>
+            </tr>
+        </thead>
+        <tbody id="peschelstrasse-departures">
+            <tr>
+                <td colspan="3" class="no-data">Daten werden geladen...</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- S-Bahnhof Trachau - Linie 70 und S1 -->
+    <h2>S-Bahnhof Trachau</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Linie</th>
+                <th>Richtung</th>
+                <th>Abfahrt</th>
+            </tr>
+        </thead>
+        <tbody id="trachau-departures">
+            <tr>
+                <td colspan="3" class="no-data">Daten werden geladen...</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <button class="refresh-button" onclick="loadAllDepartures()">Aktualisieren</button>
+
+    <script>
+        // Haltestellen-IDs
+        const PESCHELSTRASSE_ID = "33000113"; // Peschelstraße
+        const TRACHAU_ID = "33000622";       // S-Bahnhof Trachau
+        
+        // Linien-Filter
+        const PESCHELSTRASSE_LINES = ["4"];
+        const TRACHAU_LINES = ["70", "S1"];
+        
+        // Base URL für die DVB API
+        const API_URL = "https://webapi.vvo-online.de/dm";
+        
+        // Funktion zum Formatieren des Datums/Zeit
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+        
+        // Funktion zum Laden der Abfahrtszeiten für eine Haltestelle
+        async function loadDepartures(stopId, lineFilter, tableId) {
+            try {
+                // Wir müssen einen Proxy verwenden, da der Browser keine direkten POST-Anfragen unterstützt
+                // In einer echten Implementierung würdest du deinen eigenen Proxy-Server verwenden
+                const response = await fetch(`https://cors-anywhere.herokuapp.com/${API_URL}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        stopid: stopId,
+                        limit: 10,
+                        format: 'json'
+                    })
+                });
+                
+                const data = await response.json();
+                updateDepartureTable(data, lineFilter, tableId);
+            } catch (error) {
+                console.error('Fehler beim Laden der Daten:', error);
+                document.getElementById(tableId).innerHTML = 
+                    `<tr><td colspan="3" class="no-data">Fehler beim Laden der Daten. Bitte später erneut versuchen.</td></tr>`;
+            }
+        }
+        
+        // Funktion zum Aktualisieren der Abfahrtstabelle
+        function updateDepartureTable(data, lineFilter, tableId) {
+            const tableBody = document.getElementById(tableId);
+            
+            if (!data || !data.Departures || data.Departures.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="3" class="no-data">Keine Abfahrten verfügbar</td></tr>`;
+                return;
+            }
+            
+            // Filtere die Abfahrten nach den gewünschten Linien
+            const filteredDepartures = data.Departures.filter(dep => 
+                lineFilter.includes(dep.LineName)
+            );
+            
+            if (filteredDepartures.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="3" class="no-data">Keine Abfahrten für die gewünschten Linien verfügbar</td></tr>`;
+                return;
+            }
+            
+            let tableContent = '';
+            
+            filteredDepartures.forEach(dep => {
+                const line = dep.LineName || '';
+                const direction = dep.Direction || '';
+                let departureTime = 'n/a';
+                
+                if (dep.RealTime) {
+                    departureTime = formatDateTime(dep.RealTime);
+                } else if (dep.ScheduledTime) {
+                    departureTime = formatDateTime(dep.ScheduledTime);
+                }
+                
+                const lineClass = `line line-${line.replace(' ', '')}`;
+                
+                tableContent += `
+                <tr>
+                    <td><span class="${lineClass}">${line}</span></td>
+                    <td>${direction}</td>
+                    <td>${departureTime}</td>
+                </tr>`;
+            });
+            
+            tableBody.innerHTML = tableContent;
+        }
+        
+        // Funktion zum Laden aller Abfahrtszeiten
+        function loadAllDepartures() {
+            // Aktualisiere den Zeitstempel
+            const now = new Date();
+            document.getElementById('update-time').textContent = 
+                `Stand: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+            
+            // Lade Abfahrtszeiten für beide Haltestellen
+            loadDepartures(PESCHELSTRASSE_ID, PESCHELSTRASSE_LINES, "peschelstrasse-departures");
+            loadDepartures(TRACHAU_ID, TRACHAU_LINES, "trachau-departures");
+        }
+        
+        // Initiale Ladung der Abfahrtszeiten
+        loadAllDepartures();
+        
+        // Automatische Aktualisierung alle 60 Sekunden
+        setInterval(loadAllDepartures, 60000);
+    </script>
+</body>
+</html>
