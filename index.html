@@ -92,7 +92,8 @@
             <tr>
                 <th>Linie</th>
                 <th>Richtung</th>
-                <th>Abfahrt</th>
+                <th>Abfahrt in</th>
+                <th>Uhrzeit</th>
             </tr>
         </thead>
         <tbody id="peschelstrasse-departures">
@@ -109,7 +110,8 @@
             <tr>
                 <th>Linie</th>
                 <th>Richtung</th>
-                <th>Abfahrt</th>
+                <th>Abfahrt in</th>
+                <th>Uhrzeit</th>
             </tr>
         </thead>
         <tbody id="trachau-departures">
@@ -134,12 +136,17 @@
         const API_URL = "https://webapi.vvo-online.de/dm";
         
         // Funktion zum Formatieren des Datums/Zeit
-        function formatDateTime(dateString) {
-            const date = new Date(dateString);
+        function formatDateTime(dvbString) {
+            // Extrahiere Unix-Timestamp aus "/Date(1745611020000-0000)/"
+            const match = /\/Date\((\d+)(?:-\d+)?\)\//.exec(dvbString);
+            if (!match) return 'n/a';
+            const timestamp = parseInt(match[1], 10);
+            const date = new Date(timestamp);
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
             return `${hours}:${minutes}`;
         }
+
         
         // Funktion zum Laden der Abfahrtszeiten für eine Haltestelle
         async function loadDepartures(stopId, lineFilter, tableId) {
@@ -187,31 +194,83 @@
             }
             
             let tableContent = '';
-            
+            console.log("Departures data:", data.Departures);
+
             filteredDepartures.forEach(dep => {
                 const line = dep.LineName || '';
                 const direction = dep.Direction || '';
-                let departureTime = 'n/a';
-                
-                if (dep.RealTime) {
-                    departureTime = formatDateTime(dep.RealTime);
-                } else if (dep.ScheduledTime) {
-                    departureTime = formatDateTime(dep.ScheduledTime);
-                }
+                const departureTime = formatDeparture(dep.RealTime || dep.ScheduledTime);
+
                 
                 const lineClass = `line line-${line.replace(' ', '')}`;
                 
+                const relative = getRelativeTime(dep.RealTime || dep.ScheduledTime);
+                const time = formatDateTime(dep.RealTime || dep.ScheduledTime);
+
                 tableContent += `
                 <tr>
                     <td><span class="${lineClass}">${line}</span></td>
                     <td>${direction}</td>
-                    <td>${departureTime}</td>
+                    <td>${relative}</td>
+                    <td>${time}</td>
                 </tr>`;
+
             });
             
             tableBody.innerHTML = tableContent;
         }
         
+        function formatDeparture(depTime) {
+            const match = /\/Date\((\d+)(?:-\d+)?\)\//.exec(depTime);
+            if (!match) return 'n/a';
+            
+            const timestamp = parseInt(match[1], 10);
+            const now = Date.now();
+            const diffMs = timestamp - now;
+            const diffMin = diffMs / 60000;
+
+            const date = new Date(timestamp);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const timeString = `${hours}:${minutes}`;
+
+            let relative;
+            if (diffMin < 0) {
+                relative = 'Abgefahren';
+            } else if (diffMin < 0.75) {
+                relative = 'Jetzt';
+            } else if (diffMin < 1.5) {
+                relative = '<1 Min';
+            } else {
+                relative = `in ${Math.round(diffMin)} Min`;
+            }
+
+            return `${relative} – ${timeString}`;
+        }
+
+        function formatDateTime(dvbString) {
+            const match = /\/Date\((\d+)(?:-\d+)?\)\//.exec(dvbString);
+            if (!match) return 'n/a';
+            const timestamp = parseInt(match[1], 10);
+            const date = new Date(timestamp);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        function getRelativeTime(dvbString) {
+            const match = /\/Date\((\d+)(?:-\d+)?\)\//.exec(dvbString);
+            if (!match) return 'n/a';
+            const timestamp = parseInt(match[1], 10);
+            const now = Date.now();
+            const diffMin = (timestamp - now) / 60000;
+
+            if (diffMin < 0) return 'Abgefahren';
+            if (diffMin < 0.75) return 'Jetzt';
+            if (diffMin < 1.5) return '<1 Min';
+            return `in ${Math.round(diffMin)} Min`;
+        }
+
         // Funktion zum Laden aller Abfahrtszeiten
         function loadAllDepartures() {
             // Aktualisiere den Zeitstempel
@@ -228,7 +287,7 @@
         loadAllDepartures();
         
         // Automatische Aktualisierung alle 60 Sekunden
-        setInterval(loadAllDepartures, 60000);
+        setInterval(loadAllDepartures, 10000);
     </script>
 </body>
 </html>
